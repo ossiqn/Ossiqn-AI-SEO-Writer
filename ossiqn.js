@@ -6,7 +6,6 @@ jQuery(document).ready(function($) {
         
         init: function() {
             this.bindEvents();
-            this.loadLicenseInfo();
             this.setupCharts();
             this.initializeLanguageSelector();
             this.setupAnalytics();
@@ -16,7 +15,6 @@ jQuery(document).ready(function($) {
             $(document).on('submit', '#ossiqn-global-generator-form', app.handleGeneratorSubmit);
             $(document).on('click', '#analytics-filter-btn', app.loadAnalytics);
             $(document).on('click', '#analytics-export-btn', app.exportAnalyticsCSV);
-            $(document).on('submit', '#ossiqn-license-activate', app.activateLicense);
             $(document).on('click', '#api-key-toggle', app.toggleApiKey);
             $(document).on('click', '#api-key-copy', app.copyApiKey);
             $(document).on('submit', '#ossiqn-webhook-form', app.addWebhook);
@@ -54,9 +52,7 @@ jQuery(document).ready(function($) {
                 word_count: $('select[name="word_count"]').val(),
                 category: $('select[name="category"]').val(),
                 include_seo: $('input[name="include_seo"]:checked').length > 0,
-                include_images: $('input[name="include_images"]:checked').length > 0,
-                auto_publish: $('input[name="auto_publish"]:checked').length > 0,
-                notify_webhook: $('input[name="notify_webhook"]:checked').length > 0
+                auto_publish: $('input[name="auto_publish"]:checked').length > 0
             };
 
             $.ajax({
@@ -72,8 +68,7 @@ jQuery(document).ready(function($) {
                             'success'
                         );
                         $('#ossiqn-global-generator-form')[0].reset();
-                        app.loadLicenseInfo();
-                        app.updateTokensDisplay(response.data.tokens_remaining);
+                        app.loadStats();
                     } else {
                         app.showNotification('❌ ' + response.data.message, 'error');
                     }
@@ -88,7 +83,7 @@ jQuery(document).ready(function($) {
             });
         },
 
-        loadLicenseInfo: function() {
+        loadStats: function() {
             $.ajax({
                 url: ossiqn_global.ajax_url,
                 type: 'POST',
@@ -98,9 +93,8 @@ jQuery(document).ready(function($) {
                 },
                 success: function(response) {
                     if (response.success && response.data.length > 0) {
-                        const totalTokens = response.data.reduce((sum, item) => sum + item.tokens, 0);
-                        const totalCost = response.data.reduce((sum, item) => sum + item.cost, 0);
-                        $('.monthly-cost').text(totalCost.toFixed(2));
+                        const totalTokens = response.data.reduce((sum, item) => sum + (item.tokens || 0), 0);
+                        $('.total-tokens').text(totalTokens.toLocaleString());
                     }
                 }
             });
@@ -175,7 +169,7 @@ jQuery(document).ready(function($) {
                     data: {
                         labels: ['Groq', 'OpenAI', 'Cohere'],
                         datasets: [{
-                            data: [60, 30, 10],
+                            data: [80, 15, 5],
                             backgroundColor: ['#667eea', '#764ba2', '#e91e63']
                         }]
                     }
@@ -188,9 +182,9 @@ jQuery(document).ready(function($) {
                     data: {
                         labels: app.generateDateLabels(30),
                         datasets: [{
-                            label: 'Daily Cost (USD)',
-                            data: app.generateMockCostData(30),
-                            borderColor: '#f44336',
+                            label: 'Daily Generations',
+                            data: app.generateMockData(30),
+                            borderColor: '#10b981',
                             tension: 0.4
                         }]
                     }
@@ -204,7 +198,7 @@ jQuery(document).ready(function($) {
                         labels: ['English', 'Turkish', 'Spanish', 'French', 'German', 'Arabic'],
                         datasets: [{
                             label: 'Generations by Language',
-                            data: [30, 20, 15, 12, 10, 8],
+                            data: [35, 25, 15, 10, 8, 7],
                             backgroundColor: 'rgba(102, 126, 234, 0.2)',
                             borderColor: '#667eea'
                         }]
@@ -242,7 +236,6 @@ jQuery(document).ready(function($) {
         updateAnalyticsDisplay: function(data) {
             const dates = data.map(item => item.date);
             const counts = data.map(item => item.count);
-            const costs = data.map(item => parseFloat(item.cost || 0));
 
             if (app.charts.analyticsContent) {
                 app.charts.analyticsContent.data.labels = dates;
@@ -252,7 +245,7 @@ jQuery(document).ready(function($) {
 
             if (app.charts.analyticsCost) {
                 app.charts.analyticsCost.data.labels = dates;
-                app.charts.analyticsCost.data.datasets[0].data = costs;
+                app.charts.analyticsCost.data.datasets[0].data = counts;
                 app.charts.analyticsCost.update();
             }
         },
@@ -266,7 +259,7 @@ jQuery(document).ready(function($) {
                 return;
             }
 
-            let csv = 'Date,Count,Tokens,Cost,Provider\n';
+            let csv = 'Date,Count,Tokens,Provider\n';
             
             $.ajax({
                 url: ossiqn_global.ajax_url,
@@ -280,7 +273,7 @@ jQuery(document).ready(function($) {
                 success: function(response) {
                     if (response.success) {
                         response.data.forEach(item => {
-                            csv += `${item.date},${item.count},${item.tokens},${item.cost},${item.ai_provider}\n`;
+                            csv += `${item.date},${item.count},${item.tokens || 0},${item.ai_provider || 'groq'}\n`;
                         });
 
                         const element = document.createElement('a');
@@ -292,38 +285,6 @@ jQuery(document).ready(function($) {
                         document.body.removeChild(element);
 
                         app.showNotification('✅ Analytics exported successfully', 'success');
-                    }
-                }
-            });
-        },
-
-        activateLicense: function(e) {
-            e.preventDefault();
-
-            const licenseKey = $('input[name="license_key"]').val().trim();
-
-            if (!licenseKey) {
-                app.showNotification('License key is required', 'error');
-                return;
-            }
-
-            $.ajax({
-                url: ossiqn_global.ajax_url,
-                type: 'POST',
-                data: {
-                    action: 'ossiqn_validate_license',
-                    nonce: ossiqn_global.nonce,
-                    license_key: licenseKey
-                },
-                success: function(response) {
-                    if (response.success) {
-                        app.showNotification('✅ ' + response.data.message, 'success');
-                        app.loadLicenseInfo();
-                        setTimeout(function() {
-                            location.reload();
-                        }, 2000);
-                    } else {
-                        app.showNotification('❌ ' + response.data.message, 'error');
                     }
                 }
             });
@@ -403,10 +364,6 @@ jQuery(document).ready(function($) {
             $('#analytics-to').val(today.toISOString().split('T')[0]);
         },
 
-        updateTokensDisplay: function(remaining) {
-            $('[data-tokens-remaining]').text(remaining);
-        },
-
         showNotification: function(message, type) {
             const $notification = $('#ossiqn-global-notification');
             $notification
@@ -432,11 +389,7 @@ jQuery(document).ready(function($) {
         },
 
         generateMockData: function(days) {
-            return Array(days).fill(0).map(() => Math.floor(Math.random() * 20));
-        },
-
-        generateMockCostData: function(days) {
-            return Array(days).fill(0).map(() => (Math.random() * 10).toFixed(2));
+            return Array(days).fill(0).map(() => Math.floor(Math.random() * 25 + 5));
         }
     };
 
