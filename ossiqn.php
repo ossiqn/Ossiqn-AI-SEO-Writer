@@ -2,14 +2,13 @@
 if (!defined('ABSPATH')) exit;
 
 /*
-Plugin Name: Ossiqn Global Enterprise SEO
+Plugin Name: Ossiqn Global AI Content Generator
 Plugin URI: https://ossiqn.global
-Description: Enterprise AI Content Generation Platform | Multi-language • Multi-currency • Global API support
+Description: AI Content Generation Platform | Free Version | Multi-language support
 Version: 3.0.0
 Author: Ossiqn Global Team
 Author URI: https://ossiqn.global
 License: GPL v2 or later
-License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Text Domain: ossiqn-global
 Domain Path: /languages
 Requires at least: 6.0
@@ -26,7 +25,6 @@ class Ossiqn_Global_Enterprise {
     private $supported_languages = array('en_US', 'tr_TR', 'es_ES', 'fr_FR', 'de_DE', 'ar_AR', 'pt_BR', 'ja_JP', 'zh_CN', 'ru_RU');
     private $supported_currencies = array('USD', 'EUR', 'GBP', 'TRY', 'BRL', 'JPY', 'CNY', 'RUB', 'AED', 'SAR');
     private $ai_providers = array('groq', 'openai', 'cohere', 'anthropic', 'mistral');
-    private $current_user_license;
 
     public static function get_instance() {
         if (null === self::$instance) {
@@ -43,7 +41,6 @@ class Ossiqn_Global_Enterprise {
         add_action('admin_enqueue_scripts', array($this, 'ossiqn_enqueue_global_assets'));
         add_action('wp_ajax_ossiqn_generate_ai_content', array($this, 'ossiqn_ajax_generate_content'));
         add_action('wp_ajax_ossiqn_get_analytics', array($this, 'ossiqn_ajax_get_analytics'));
-        add_action('wp_ajax_ossiqn_validate_license', array($this, 'ossiqn_ajax_validate_license'));
         add_action('wp_ajax_ossiqn_switch_provider', array($this, 'ossiqn_ajax_switch_provider'));
         add_action('wp_ajax_ossiqn_bulk_generate', array($this, 'ossiqn_ajax_bulk_generate'));
         add_action('rest_api_init', array($this, 'ossiqn_register_rest_endpoints'));
@@ -51,12 +48,10 @@ class Ossiqn_Global_Enterprise {
 
         register_activation_hook(OSSIQN_GLOBAL_FILE, array($this, 'ossiqn_global_activation'));
         register_deactivation_hook(OSSIQN_GLOBAL_FILE, array($this, 'ossiqn_global_deactivation'));
-        register_uninstall_hook(OSSIQN_GLOBAL_FILE, array($this, 'ossiqn_global_uninstall'));
     }
 
     public function ossiqn_init() {
-        $this->ossiqn_check_license();
-        $this->ossiqn_check_updates();
+        // License check removed - free version
     }
 
     public function ossiqn_global_activation() {
@@ -86,51 +81,6 @@ class Ossiqn_Global_Enterprise {
                     KEY user_id (user_id),
                     KEY created_at (created_at)
                 )
-            ",
-            'ossiqn_global_licenses' => "
-                CREATE TABLE IF NOT EXISTS {$wpdb->prefix}ossiqn_global_licenses (
-                    id bigint(20) NOT NULL AUTO_INCREMENT,
-                    license_key varchar(64) NOT NULL UNIQUE,
-                    user_id bigint(20) NOT NULL,
-                    license_type varchar(50) NOT NULL,
-                    status varchar(20) NOT NULL DEFAULT 'active',
-                    tokens_limit int(11) NOT NULL,
-                    tokens_used int(11) NOT NULL DEFAULT 0,
-                    api_calls_limit int(11) NOT NULL,
-                    api_calls_used int(11) NOT NULL DEFAULT 0,
-                    expires_at datetime NOT NULL,
-                    activated_at datetime DEFAULT CURRENT_TIMESTAMP,
-                    updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    PRIMARY KEY (id),
-                    KEY license_key (license_key),
-                    KEY user_id (user_id)
-                )
-            ",
-            'ossiqn_global_usage' => "
-                CREATE TABLE IF NOT EXISTS {$wpdb->prefix}ossiqn_global_usage (
-                    id bigint(20) NOT NULL AUTO_INCREMENT,
-                    license_id bigint(20) NOT NULL,
-                    date date NOT NULL,
-                    api_calls int(11) NOT NULL DEFAULT 0,
-                    tokens_used int(11) NOT NULL DEFAULT 0,
-                    cost_usd decimal(10,4) NOT NULL DEFAULT 0,
-                    PRIMARY KEY (id),
-                    KEY license_id (license_id),
-                    KEY date (date),
-                    FOREIGN KEY (license_id) REFERENCES {$wpdb->prefix}ossiqn_global_licenses(id) ON DELETE CASCADE
-                )
-            ",
-            'ossiqn_global_webhooks' => "
-                CREATE TABLE IF NOT EXISTS {$wpdb->prefix}ossiqn_global_webhooks (
-                    id bigint(20) NOT NULL AUTO_INCREMENT,
-                    license_id bigint(20) NOT NULL,
-                    webhook_url varchar(500) NOT NULL,
-                    event_type varchar(50) NOT NULL,
-                    active tinyint(1) NOT NULL DEFAULT 1,
-                    created_at datetime DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (id),
-                    KEY license_id (license_id)
-                )
             "
         );
 
@@ -146,23 +96,7 @@ class Ossiqn_Global_Enterprise {
     }
 
     public function ossiqn_global_deactivation() {
-        wp_clear_scheduled_hook('ossiqn_global_check_licenses');
         wp_clear_scheduled_hook('ossiqn_global_cleanup_logs');
-    }
-
-    public function ossiqn_global_uninstall() {
-        global $wpdb;
-        
-        if (get_option('ossiqn_global_keep_data') !== '1') {
-            $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}ossiqn_global_history");
-            $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}ossiqn_global_licenses");
-            $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}ossiqn_global_usage");
-            $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}ossiqn_global_webhooks");
-        }
-
-        delete_option('ossiqn_global_version');
-        delete_option('ossiqn_global_settings');
-        delete_option('ossiqn_global_activated_at');
     }
 
     private function ossiqn_get_default_settings() {
@@ -177,46 +111,8 @@ class Ossiqn_Global_Enterprise {
             'max_content_length' => 5000,
             'api_timeout' => 120,
             'rate_limit_per_hour' => 100,
-            'enable_white_label' => 0,
-            'white_label_name' => '',
-            'enable_marketplace' => 1,
-            'enable_affiliate' => 0,
             'timezone' => get_option('timezone_string')
         );
-    }
-
-    private function ossiqn_check_license() {
-        if (!is_admin()) return;
-        
-        $license_key = get_option('ossiqn_global_license_key');
-        
-        if (empty($license_key)) {
-            add_action('admin_notices', array($this, 'ossiqn_no_license_notice'));
-        }
-    }
-
-    public function ossiqn_no_license_notice() {
-        ?>
-        <div class="notice notice-warning is-dismissible">
-            <p><?php printf(
-                __('Ossiqn Global Enterprise requires a valid license. <a href="%s">Activate your license here</a>', 'ossiqn-global'),
-                admin_url('admin.php?page=ossiqn-global-license')
-            ); ?></p>
-        </div>
-        <?php
-    }
-
-    private function ossiqn_check_updates() {
-        if (!get_transient('ossiqn_global_check_updates')) {
-            $response = wp_remote_get('https://api.ossiqn.global/updates/check', array(
-                'sslverify' => false,
-                'timeout' => 10
-            ));
-            
-            if (!is_wp_error($response)) {
-                set_transient('ossiqn_global_check_updates', true, HOUR_IN_SECONDS);
-            }
-        }
     }
 
     public function ossiqn_register_main_menu() {
@@ -236,7 +132,6 @@ class Ossiqn_Global_Enterprise {
             'ossiqn-global-templates' => __('Templates', 'ossiqn-global'),
             'ossiqn-global-analytics' => __('Analytics', 'ossiqn-global'),
             'ossiqn-global-api' => __('API & Webhooks', 'ossiqn-global'),
-            'ossiqn-global-license' => __('License & Billing', 'ossiqn-global'),
             'ossiqn-global-settings' => __('Settings', 'ossiqn-global'),
         );
 
@@ -276,7 +171,6 @@ class Ossiqn_Global_Enterprise {
         if (!current_user_can('manage_options')) wp_die(__('Unauthorized', 'ossiqn-global'));
         
         global $wpdb;
-        $license = $this->ossiqn_get_user_license();
         $history = $wpdb->get_results("
             SELECT * FROM {$wpdb->prefix}ossiqn_global_history 
             WHERE user_id = " . get_current_user_id() . " 
@@ -286,16 +180,12 @@ class Ossiqn_Global_Enterprise {
         <div class="ossiqn-global-container">
             <div class="ossiqn-global-header">
                 <div class="header-content">
-                    <h1>🚀 <?php _e('Ossiqn Global Enterprise', 'ossiqn-global'); ?></h1>
-                    <p><?php _e('Next-Generation AI Content Generation Platform', 'ossiqn-global'); ?></p>
+                    <h1>🚀 <?php _e('Ossiqn Global AI', 'ossiqn-global'); ?></h1>
+                    <p><?php _e('Free AI Content Generation Platform', 'ossiqn-global'); ?></p>
                 </div>
                 <div class="header-badge">
                     <span class="version">v<?php echo OSSIQN_GLOBAL_VERSION; ?></span>
-                    <?php if ($license && $license->status === 'active'): ?>
-                        <span class="license-badge active"><?php _e('License Active', 'ossiqn-global'); ?></span>
-                    <?php else: ?>
-                        <span class="license-badge inactive"><?php _e('No License', 'ossiqn-global'); ?></span>
-                    <?php endif; ?>
+                    <span class="license-badge active"><?php _e('Free Version', 'ossiqn-global'); ?></span>
                 </div>
             </div>
 
@@ -308,31 +198,21 @@ class Ossiqn_Global_Enterprise {
                     </div>
                 </div>
 
-                <?php if ($license): ?>
-                    <div class="stat-card">
-                        <div class="stat-icon">⚡</div>
-                        <div class="stat-info">
-                            <h3><?php echo $license->tokens_limit - $license->tokens_used; ?></h3>
-                            <p><?php _e('Tokens Remaining', 'ossiqn-global'); ?></p>
-                        </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-info">
+                        <h3>∞</h3>
+                        <p><?php _e('Free Tokens', 'ossiqn-global'); ?></p>
                     </div>
+                </div>
 
-                    <div class="stat-card">
-                        <div class="stat-icon">💰</div>
-                        <div class="stat-info">
-                            <h3><?php echo get_option('ossiqn_global_currency'); ?> <span class="monthly-cost">-</span></h3>
-                            <p><?php _e('This Month Cost', 'ossiqn-global'); ?></p>
-                        </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-info">
+                        <h3><?php _e('Free', 'ossiqn-global'); ?></h3>
+                        <p><?php _e('No Cost', 'ossiqn-global'); ?></p>
                     </div>
-
-                    <div class="stat-card">
-                        <div class="stat-icon">📅</div>
-                        <div class="stat-info">
-                            <h3><?php echo date_i18n('M d, Y', strtotime($license->expires_at)); ?></h3>
-                            <p><?php _e('License Expires', 'ossiqn-global'); ?></p>
-                        </div>
-                    </div>
-                <?php endif; ?>
+                </div>
             </div>
 
             <div class="ossiqn-quick-actions">
@@ -361,23 +241,21 @@ class Ossiqn_Global_Enterprise {
                             <th><?php _e('Language', 'ossiqn-global'); ?></th>
                             <th><?php _e('Provider', 'ossiqn-global'); ?></th>
                             <th><?php _e('Tokens', 'ossiqn-global'); ?></th>
-                            <th><?php _e('Cost', 'ossiqn-global'); ?></th>
                             <th><?php _e('Created', 'ossiqn-global'); ?></th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach (array_slice($history, 0, 10) as $item): ?>
-                            <tr>
+                             <tr>
                                 <td><a href="<?php echo get_edit_post_link($item->post_id); ?>" target="_blank"><?php echo esc_html($item->title); ?></a></td>
                                 <td><flag><?php echo strtoupper(substr($item->language, 0, 2)); ?></flag></td>
                                 <td><?php echo esc_html($item->ai_provider); ?></td>
                                 <td><?php echo number_format($item->tokens_used); ?></td>
-                                <td>$<?php echo number_format($item->cost_usd, 4); ?></td>
                                 <td><?php echo date_i18n('M d, Y H:i', strtotime($item->created_at)); ?></td>
-                            </tr>
+                             </tr>
                         <?php endforeach; ?>
                     </tbody>
-                </table>
+                 </table>
             </div>
         </div>
         <?php
@@ -385,12 +263,6 @@ class Ossiqn_Global_Enterprise {
 
     public function ossiqn_render_generator() {
         if (!current_user_can('manage_options')) wp_die(__('Unauthorized', 'ossiqn-global'));
-        
-        $license = $this->ossiqn_get_user_license();
-        if (!$license || $license->status !== 'active') {
-            echo '<div class="notice notice-error"><p>' . __('Please activate a license to generate content', 'ossiqn-global') . '</p></div>';
-            return;
-        }
         ?>
         <div class="ossiqn-global-container">
             <h1>🎨 <?php _e('AI Content Generator', 'ossiqn-global'); ?></h1>
@@ -483,18 +355,8 @@ class Ossiqn_Global_Enterprise {
                     </label>
 
                     <label class="checkbox-label">
-                        <input type="checkbox" name="include_images" checked>
-                        <?php _e('Generate Featured Image', 'ossiqn-global'); ?>
-                    </label>
-
-                    <label class="checkbox-label">
                         <input type="checkbox" name="auto_publish">
                         <?php _e('Auto Publish', 'ossiqn-global'); ?>
-                    </label>
-
-                    <label class="checkbox-label">
-                        <input type="checkbox" name="notify_webhook">
-                        <?php _e('Send Webhook Notification', 'ossiqn-global'); ?>
                     </label>
                 </div>
 
@@ -568,16 +430,16 @@ class Ossiqn_Global_Enterprise {
         if (!current_user_can('manage_options')) wp_die(__('Unauthorized', 'ossiqn-global'));
         ?>
         <div class="ossiqn-global-container">
-            <h1>🔌 <?php _e('API & Webhooks', 'ossiqn-global'); ?></h1>
+            <h1>🔌 <?php _e('API Settings', 'ossiqn-global'); ?></h1>
             
             <div class="api-section">
-                <h3><?php _e('API Key', 'ossiqn-global'); ?></h3>
+                <h3><?php _e('Groq API Key', 'ossiqn-global'); ?></h3>
                 <div class="api-key-display">
-                    <input type="password" id="api-key-input" class="form-input" readonly>
+                    <input type="password" id="api-key-input" class="form-input" value="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">
                     <button type="button" class="btn btn-secondary" id="api-key-toggle">👁️</button>
                     <button type="button" class="btn btn-secondary" id="api-key-copy"><?php _e('Copy', 'ossiqn-global'); ?></button>
-                    <button type="button" class="btn btn-danger" id="api-key-regenerate"><?php _e('Regenerate', 'ossiqn-global'); ?></button>
                 </div>
+                <p class="description"><?php _e('Default Groq API key is pre-configured for free usage.', 'ossiqn-global'); ?></p>
             </div>
 
             <div class="webhook-section">
@@ -600,83 +462,6 @@ class Ossiqn_Global_Enterprise {
 
                 <div id="webhooks-list" class="webhooks-list">
                     <!-- Webhooks listed here -->
-                </div>
-            </div>
-        </div>
-        <?php
-    }
-
-    public function ossiqn_render_license() {
-        if (!current_user_can('manage_options')) wp_die(__('Unauthorized', 'ossiqn-global'));
-        
-        $license = $this->ossiqn_get_user_license();
-        ?>
-        <div class="ossiqn-global-container">
-            <h1>🎟️ <?php _e('License & Billing', 'ossiqn-global'); ?></h1>
-            
-            <?php if ($license && $license->status === 'active'): ?>
-                <div class="license-info-card active">
-                    <h3><?php _e('Active License', 'ossiqn-global'); ?></h3>
-                    <div class="license-details">
-                        <p><strong><?php _e('License Key:', 'ossiqn-global'); ?></strong> <?php echo substr($license->license_key, 0, 20) . '...'; ?></p>
-                        <p><strong><?php _e('Type:', 'ossiqn-global'); ?></strong> <?php echo ucfirst(str_replace('_', ' ', $license->license_type)); ?></p>
-                        <p><strong><?php _e('Expires:', 'ossiqn-global'); ?></strong> <?php echo date_i18n('F d, Y', strtotime($license->expires_at)); ?></p>
-                        <p><strong><?php _e('Tokens Used:', 'ossiqn-global'); ?></strong> <?php echo number_format($license->tokens_used) . ' / ' . number_format($license->tokens_limit); ?></p>
-                    </div>
-                </div>
-            <?php else: ?>
-                <div class="license-activate-form">
-                    <h3><?php _e('Activate Your License', 'ossiqn-global'); ?></h3>
-                    <form id="ossiqn-license-activate" class="license-form">
-                        <?php wp_nonce_field('ossiqn_global_nonce', 'ossiqn_nonce'); ?>
-                        <div class="form-group">
-                            <label><?php _e('License Key', 'ossiqn-global'); ?> *</label>
-                            <input type="text" name="license_key" class="form-input" required placeholder="<?php _e('Enter your license key', 'ossiqn-global'); ?>">
-                        </div>
-                        <button type="submit" class="btn btn-primary"><?php _e('Activate License', 'ossiqn-global'); ?></button>
-                    </form>
-                </div>
-            <?php endif; ?>
-
-            <div class="pricing-plans">
-                <h3><?php _e('Upgrade Your Plan', 'ossiqn-global'); ?></h3>
-                <div class="plans-grid">
-                    <div class="plan-card">
-                        <h4><?php _e('Starter', 'ossiqn-global'); ?></h4>
-                        <div class="price">$29<span>/month</span></div>
-                        <ul>
-                            <li>10,000 tokens</li>
-                            <li>500 API calls</li>
-                            <li>Email support</li>
-                        </ul>
-                        <button class="btn btn-secondary"><?php _e('Choose Plan', 'ossiqn-global'); ?></button>
-                    </div>
-
-                    <div class="plan-card featured">
-                        <span class="popular-badge"><?php _e('Most Popular', 'ossiqn-global'); ?></span>
-                        <h4><?php _e('Professional', 'ossiqn-global'); ?></h4>
-                        <div class="price">$99<span>/month</span></div>
-                        <ul>
-                            <li>100,000 tokens</li>
-                            <li>5,000 API calls</li>
-                            <li>Priority support</li>
-                            <li>Custom templates</li>
-                        </ul>
-                        <button class="btn btn-primary"><?php _e('Choose Plan', 'ossiqn-global'); ?></button>
-                    </div>
-
-                    <div class="plan-card">
-                        <h4><?php _e('Enterprise', 'ossiqn-global'); ?></h4>
-                        <div class="price"><?php _e('Custom', 'ossiqn-global'); ?></div>
-                        <ul>
-                            <li>Unlimited tokens</li>
-                            <li>Unlimited API calls</li>
-                            <li>24/7 support</li>
-                            <li>White-label option</li>
-                            <li>Dedicated account</li>
-                        </ul>
-                        <button class="btn btn-secondary"><?php _e('Contact Sales', 'ossiqn-global'); ?></button>
-                    </div>
                 </div>
             </div>
         </div>
@@ -790,11 +575,6 @@ class Ossiqn_Global_Enterprise {
             wp_send_json_error(__('Unauthorized', 'ossiqn-global'), 403);
         }
 
-        $license = $this->ossiqn_get_user_license();
-        if (!$license || $license->status !== 'active') {
-            wp_send_json_error(__('License expired or invalid', 'ossiqn-global'));
-        }
-
         $title = sanitize_text_field($_POST['title'] ?? '');
         $keywords = sanitize_text_field($_POST['keywords'] ?? '');
         $language = sanitize_text_field($_POST['language'] ?? 'en_US');
@@ -820,11 +600,6 @@ class Ossiqn_Global_Enterprise {
 
         $content = $api_response['content'];
         $tokens_used = $api_response['tokens_used'];
-        $cost = $this->ossiqn_calculate_cost($provider, $tokens_used);
-
-        if ($license->tokens_used + $tokens_used > $license->tokens_limit) {
-            wp_send_json_error(__('Insufficient tokens. Please upgrade your license.', 'ossiqn-global'));
-        }
 
         $post_data = array(
             'post_title' => $title,
@@ -838,8 +613,7 @@ class Ossiqn_Global_Enterprise {
                 '_ossiqn_provider' => $provider,
                 '_ossiqn_language' => $language,
                 '_ossiqn_style' => $style,
-                '_ossiqn_tokens' => $tokens_used,
-                '_ossiqn_cost' => $cost
+                '_ossiqn_tokens' => $tokens_used
             )
         );
 
@@ -863,25 +637,18 @@ class Ossiqn_Global_Enterprise {
                 'tone' => $tone,
                 'word_count' => $word_count,
                 'tokens_used' => $tokens_used,
-                'cost_usd' => $cost,
+                'cost_usd' => 0,
                 'user_id' => get_current_user_id(),
                 'ip_address' => sanitize_text_field($_SERVER['REMOTE_ADDR']),
                 'status' => 'success'
             )
         );
 
-        $wpdb->update(
-            $wpdb->prefix . 'ossiqn_global_licenses',
-            array('tokens_used' => $license->tokens_used + $tokens_used),
-            array('id' => $license->id)
-        );
-
         wp_send_json_success(array(
             'message' => __('Content generated successfully!', 'ossiqn-global'),
             'post_id' => $post_id,
             'post_url' => get_permalink($post_id),
-            'edit_url' => get_edit_post_link($post_id, 'raw'),
-            'tokens_remaining' => $license->tokens_limit - ($license->tokens_used + $tokens_used)
+            'edit_url' => get_edit_post_link($post_id, 'raw')
         ));
     }
 
@@ -902,7 +669,6 @@ class Ossiqn_Global_Enterprise {
                 DATE(created_at) as date,
                 COUNT(*) as count,
                 SUM(tokens_used) as tokens,
-                SUM(cost_usd) as cost,
                 ai_provider
             FROM {$wpdb->prefix}ossiqn_global_history
             WHERE user_id = %d AND DATE(created_at) BETWEEN %s AND %s
@@ -911,58 +677,6 @@ class Ossiqn_Global_Enterprise {
         ", get_current_user_id(), $from, $to));
 
         wp_send_json_success($analytics);
-    }
-
-    public function ossiqn_ajax_validate_license() {
-        check_ajax_referer('ossiqn_global_nonce', 'nonce');
-
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(__('Unauthorized', 'ossiqn-global'), 403);
-        }
-
-        $license_key = sanitize_text_field($_POST['license_key'] ?? '');
-
-        if (empty($license_key)) {
-            wp_send_json_error(__('License key is required', 'ossiqn-global'));
-        }
-
-        $response = wp_remote_post('https://api.ossiqn.global/licenses/validate', array(
-            'sslverify' => false,
-            'timeout' => 10,
-            'body' => wp_json_encode(array('license_key' => $license_key)),
-            'headers' => array('Content-Type' => 'application/json')
-        ));
-
-        if (is_wp_error($response)) {
-            wp_send_json_error(__('Failed to validate license', 'ossiqn-global'));
-        }
-
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-
-        if (!isset($data['valid']) || !$data['valid']) {
-            wp_send_json_error(__('Invalid license key', 'ossiqn-global'));
-        }
-
-        global $wpdb;
-        $wpdb->insert(
-            $wpdb->prefix . 'ossiqn_global_licenses',
-            array(
-                'license_key' => $license_key,
-                'user_id' => get_current_user_id(),
-                'license_type' => $data['type'],
-                'status' => 'active',
-                'tokens_limit' => $data['tokens_limit'],
-                'api_calls_limit' => $data['api_calls_limit'],
-                'expires_at' => $data['expires_at']
-            )
-        );
-
-        update_option('ossiqn_global_license_key', $license_key);
-
-        wp_send_json_success(array(
-            'message' => __('License activated successfully!', 'ossiqn-global'),
-            'license_data' => $data
-        ));
     }
 
     public function ossiqn_ajax_switch_provider() {
@@ -1046,40 +760,28 @@ class Ossiqn_Global_Enterprise {
     public function ossiqn_register_global_widget() {
         wp_add_dashboard_widget(
             'ossiqn_global_widget',
-            __('Ossiqn Global', 'ossiqn-global'),
+            __('Ossiqn Global AI', 'ossiqn-global'),
             array($this, 'ossiqn_widget_output')
         );
     }
 
     public function ossiqn_widget_output() {
         global $wpdb;
-        $license = $this->ossiqn_get_user_license();
         $count = $wpdb->get_var("
             SELECT COUNT(*) FROM {$wpdb->prefix}ossiqn_global_history 
             WHERE user_id = " . get_current_user_id()
         );
         ?>
         <div style="padding: 15px;">
-            <p><?php printf(__('Generated %d contents this month', 'ossiqn-global'), $count); ?></p>
-            <?php if ($license): ?>
-                <p><?php printf(__('Tokens: %d / %d', 'ossiqn-global'), $license->tokens_used, $license->tokens_limit); ?></p>
-            <?php endif; ?>
+            <p><?php printf(__('Generated %d contents so far', 'ossiqn-global'), $count); ?></p>
+            <p><?php _e('Free AI content generation with Groq', 'ossiqn-global'); ?></p>
             <p>
-                <a href="<?php echo admin_url('admin.php?page=ossiqn-global-generator'); ?>" class="button">
+                <a href="<?php echo admin_url('admin.php?page=ossiqn-global-generator'); ?>" class="button button-primary">
                     <?php _e('Generate Content', 'ossiqn-global'); ?>
                 </a>
             </p>
         </div>
         <?php
-    }
-
-    private function ossiqn_get_user_license() {
-        global $wpdb;
-        return $wpdb->get_row($wpdb->prepare("
-            SELECT * FROM {$wpdb->prefix}ossiqn_global_licenses 
-            WHERE user_id = %d AND status = 'active' AND expires_at > NOW()
-            LIMIT 1
-        ", get_current_user_id()));
     }
 
     private function ossiqn_build_prompt($title, $keywords, $language, $style, $tone, $word_count, $include_seo) {
@@ -1113,7 +815,7 @@ class Ossiqn_Global_Enterprise {
     }
 
     private function ossiqn_call_groq_api($prompt) {
-        $api_key = get_option('ossiqn_groq_api_key', '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');
+        $api_key = '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';
         
         $response = wp_remote_post('https://api.groq.com/openai/v1/chat/completions', array(
             'timeout' => 120,
@@ -1151,7 +853,7 @@ class Ossiqn_Global_Enterprise {
         $api_key = get_option('ossiqn_openai_api_key', '');
         
         if (empty($api_key)) {
-            return new WP_Error('missing_key', __('OpenAI API key not configured', 'ossiqn-global'));
+            return $this->ossiqn_call_groq_api($prompt);
         }
 
         $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
@@ -1170,13 +872,13 @@ class Ossiqn_Global_Enterprise {
         ));
 
         if (is_wp_error($response)) {
-            return $response;
+            return $this->ossiqn_call_groq_api($prompt);
         }
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
 
         if (!isset($body['choices'][0]['message']['content'])) {
-            return new WP_Error('api_error', __('API returned invalid response', 'ossiqn-global'));
+            return $this->ossiqn_call_groq_api($prompt);
         }
 
         return array(
@@ -1187,53 +889,7 @@ class Ossiqn_Global_Enterprise {
     }
 
     private function ossiqn_call_cohere_api($prompt) {
-        $api_key = get_option('ossiqn_cohere_api_key', '');
-        
-        if (empty($api_key)) {
-            return new WP_Error('missing_key', __('Cohere API key not configured', 'ossiqn-global'));
-        }
-
-        $response = wp_remote_post('https://api.cohere.ai/generate', array(
-            'timeout' => 120,
-            'sslverify' => false,
-            'headers' => array(
-                'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $api_key
-            ),
-            'body' => wp_json_encode(array(
-                'prompt' => $prompt,
-                'max_tokens' => 3000,
-                'temperature' => 0.7
-            ))
-        ));
-
-        if (is_wp_error($response)) {
-            return $response;
-        }
-
-        $body = json_decode(wp_remote_retrieve_body($response), true);
-
-        if (!isset($body['generations'][0]['text'])) {
-            return new WP_Error('api_error', __('API returned invalid response', 'ossiqn-global'));
-        }
-
-        return array(
-            'content' => $body['generations'][0]['text'],
-            'tokens_used' => 0,
-            'provider' => 'cohere'
-        );
-    }
-
-    private function ossiqn_calculate_cost($provider, $tokens_used) {
-        $cost_per_token = array(
-            'groq' => 0.00005,
-            'openai' => 0.0005,
-            'cohere' => 0.0001,
-            'anthropic' => 0.0001,
-            'mistral' => 0.00007
-        );
-
-        return ($cost_per_token[$provider] ?? 0) * $tokens_used;
+        return $this->ossiqn_call_groq_api($prompt);
     }
 
     private function ossiqn_get_language_name($code) {
